@@ -26,6 +26,11 @@ public class Agent
         LastKnownLocation += GetRandomStep();
     }
     
+    public void UpdateLocation(LocationModel newLocation)
+    {
+        LastKnownLocation = newLocation;
+    }
+    
     private Vector2 GetRandomStep()
     {
         return new Vector2(Random.Range(-0.0001f, 0.0001f), Random.Range(-0.0001f, 0.0001f));

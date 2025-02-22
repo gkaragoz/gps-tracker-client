@@ -3,10 +3,13 @@ using UnityEngine;
 using WebSocketSharp;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using Random = UnityEngine.Random;
 
 public class LocationSender : MonoBehaviour
 {
+    [SerializeField] private TextMeshProUGUI statusText;
+    
     public float updateInterval = 30f; // Configurable update interval
     public float reconnectDelay = 5f; // Wait before trying to reconnect
     public int agentCount = 10; // Number of agents to simulate
@@ -23,6 +26,11 @@ public class LocationSender : MonoBehaviour
         CreateAgents();
     }
 
+    private void AddLog(string log)
+    {
+        statusText.text += $"[{DateTime.Now.ToLongTimeString()}] {log}\n";
+    }
+
     private void ConnectToServer()
     {
         if (_ws != null)
@@ -35,23 +43,23 @@ public class LocationSender : MonoBehaviour
 
         _ws.OnOpen += (sender, e) =>
         {
-            Debug.Log("Connected to server");
+            AddLog("Connected to server");
             _isReconnecting = false; // Reset reconnect flag
         };
 
-        _ws.OnMessage += (sender, e) => Debug.Log("<<< Message from server: " + e.Data);
-        _ws.OnError += (sender, e) => Debug.LogWarning("WebSocket Error: " + e.Message);
+        _ws.OnMessage += (sender, e) => AddLog("<<< Message from server: " + e.Data);
+        _ws.OnError += (sender, e) => AddLog("WebSocket Error: " + e.Message);
 
         _ws.OnClose += (sender, e) =>
         {
-            Debug.LogWarning($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
-
+            AddLog($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
             if (!_isQuitting)
             {
                 StartCoroutine(Reconnect());
             }
         };
 
+        AddLog($"Attempting to connect... to {_ws.Url}");
         _ws.Connect();
 
         if (!_isReconnecting) 
@@ -68,8 +76,10 @@ public class LocationSender : MonoBehaviour
             var famousPlaceName = Enum.GetName(typeof(FamousLocation), randomPlaceId);
             var famousPlaceLocationModel = GeoHelper.FamousPlaces[(FamousLocation)randomPlaceId];
             var startLocation = new LocationModel(famousPlaceLocationModel.Latitude, famousPlaceLocationModel.Longitude);
-            _agents.Add(new Agent($"Agent-{ii}", famousPlaceName, startLocation, 0.01f));
-            Debug.Log($"Agent-{ii} created at {famousPlaceName}");
+            
+            string deviceId = SystemInfo.deviceUniqueIdentifier;
+            _agents.Add(new Agent(deviceId, famousPlaceName, startLocation, 0.01f));
+            AddLog($"Agent-{ii} created at {famousPlaceName}");
         }
     }
 
@@ -87,9 +97,11 @@ public class LocationSender : MonoBehaviour
     {
         if (_ws is { ReadyState: WebSocketState.Open })
         {
-            agent.SearchOneStep();
+            if (DeviceLocationService.Instance != null && DeviceLocationService.Instance.IsLocationEnabled)
+                agent.UpdateLocation(DeviceLocationService.Instance.CurrentLocation);
+            
             string jsonData = agent.GetLocationModelJson();
-            Debug.Log($">>> Sending location data: {jsonData}");
+            AddLog($">>> Sending location data: {jsonData}");
             _ws.Send(jsonData);
         }
     }
@@ -99,7 +111,7 @@ public class LocationSender : MonoBehaviour
         if (_isReconnecting) yield break;
         _isReconnecting = true;
 
-        Debug.Log("Attempting to reconnect...");
+        AddLog($"Attempting to reconnect...");
         yield return new WaitForSeconds(reconnectDelay);
         ConnectToServer();
     }
@@ -119,7 +131,7 @@ public class LocationSender : MonoBehaviour
     {
         if (_ws is { ReadyState: WebSocketState.Open })
         {
-            Debug.Log("Closing WebSocket...");
+            AddLog("Closing WebSocket...");
             _ws.Close();
         }
     }
