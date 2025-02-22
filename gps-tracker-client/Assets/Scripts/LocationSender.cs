@@ -3,12 +3,17 @@ using UnityEngine;
 using WebSocketSharp;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using TMPro;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class LocationSender : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private TMP_InputField inputField;
+    [SerializeField] private ScrollRect scrollRect;
+    [SerializeField] private GameObject submitButtonObj;
     
     public float updateInterval = 30f; // Configurable update interval
     public float reconnectDelay = 5f; // Wait before trying to reconnect
@@ -17,10 +22,19 @@ public class LocationSender : MonoBehaviour
     private WebSocket _ws;
     private bool _isQuitting;
     private bool _isReconnecting;
+    private string _url;
     
     private readonly List<Agent> _agents = new List<Agent>();
+    private StringBuilder _stringBuilder;
 
     private void Start()
+    {
+        _url = "ws://localhost:3000";
+        inputField.text = _url;
+        _stringBuilder = new StringBuilder();
+    }
+
+    private void StartApp()
     {
         ConnectToServer();
         CreateAgents();
@@ -28,7 +42,28 @@ public class LocationSender : MonoBehaviour
 
     private void AddLog(string log)
     {
-        statusText.text += $"[{DateTime.Now.ToLongTimeString()}] {log}\n";
+        _stringBuilder.AppendLine($"[{DateTime.Now.ToLongTimeString()}] {log}");
+        string result = GetLastNCharacters(_stringBuilder, 1000);
+        statusText.text += result;
+
+        IEnumerator Do()
+        {
+            yield return null;
+            scrollRect.normalizedPosition = Vector2.zero;
+        }
+
+        StartCoroutine(Do());
+    }
+    
+    private static string GetLastNCharacters(StringBuilder sb, int length)
+    {
+        if (sb.Length <= length)
+        {
+            return sb.ToString();
+        }
+
+        // Use ToString() with substring to efficiently extract the last N characters
+        return sb.ToString(sb.Length - length, length);
     }
 
     private void ConnectToServer()
@@ -39,7 +74,7 @@ public class LocationSender : MonoBehaviour
             _ws = null;
         }
 
-        _ws = new WebSocket("ws://localhost:3000");
+        _ws = new WebSocket(_url);
 
         _ws.OnOpen += (sender, e) =>
         {
@@ -134,5 +169,13 @@ public class LocationSender : MonoBehaviour
             AddLog("Closing WebSocket...");
             _ws.Close();
         }
+    }
+
+    public void OnSubmitPressed()
+    {
+        _url = inputField.text;
+        inputField.gameObject.SetActive(false);
+        submitButtonObj.gameObject.SetActive(false);
+        StartApp();
     }
 }
