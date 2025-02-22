@@ -166,8 +166,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 06e87f5dcf3c44f181afeca3c2934c6b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  userId: searcher_1
   updateInterval: 1
+  reconnectDelay: 5
+  agentCount: 5
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,97 +1,112 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using WebSocketSharp;
 using System.Collections;
+using System.Collections.Generic;
+using Random = UnityEngine.Random;
 
 public class LocationSender : MonoBehaviour
 {
-    private WebSocket ws;
-    public string userId = "searcher_1"; // Unique ID for each searcher
     public float updateInterval = 30f; // Configurable update interval
-    private bool isQuitting = false;
-    private bool isReconnecting = false;
-    private const float reconnectDelay = 5f; // Wait before trying to reconnect
+    public float reconnectDelay = 5f; // Wait before trying to reconnect
+    public int agentCount = 10; // Number of agents to simulate
+    
+    private WebSocket _ws;
+    private bool _isQuitting;
+    private bool _isReconnecting;
+    
+    private readonly List<Agent> _agents = new List<Agent>();
 
     private void Start()
     {
         ConnectToServer();
+        CreateAgents();
     }
 
     private void ConnectToServer()
     {
-        if (ws != null)
+        if (_ws != null)
         {
-            ws.Close(); // Ensure old connection is closed before creating a new one
-            ws = null;
+            _ws.Close(); // Ensure old connection is closed before creating a new one
+            _ws = null;
         }
 
-        ws = new WebSocket("ws://localhost:3000");
+        _ws = new WebSocket("ws://localhost:3000");
 
-        ws.OnOpen += (sender, e) =>
+        _ws.OnOpen += (sender, e) =>
         {
             Debug.Log("Connected to server");
-            isReconnecting = false; // Reset reconnect flag
+            _isReconnecting = false; // Reset reconnect flag
         };
 
-        ws.OnMessage += (sender, e) => Debug.Log("<<< Message from server: " + e.Data);
-        ws.OnError += (sender, e) => Debug.LogWarning("WebSocket Error: " + e.Message);
+        _ws.OnMessage += (sender, e) => Debug.Log("<<< Message from server: " + e.Data);
+        _ws.OnError += (sender, e) => Debug.LogWarning("WebSocket Error: " + e.Message);
 
-        ws.OnClose += (sender, e) =>
+        _ws.OnClose += (sender, e) =>
         {
             Debug.LogWarning($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
 
-            if (!isQuitting)
+            if (!_isQuitting)
             {
                 StartCoroutine(Reconnect());
             }
         };
 
-        ws.Connect();
+        _ws.Connect();
 
-        if (!isReconnecting) 
+        if (!_isReconnecting) 
         {
             StartCoroutine(SendLocation());
+        }
+    }
+    
+    private void CreateAgents()
+    {
+        for (int ii = 0; ii < agentCount; ii++)
+        {
+            var randomPlaceId = Random.Range(0, Enum.GetValues(typeof(FamousLocation)).Length);
+            var famousPlaceName = Enum.GetName(typeof(FamousLocation), randomPlaceId);
+            var famousPlaceLocationModel = GeoHelper.FamousPlaces[(FamousLocation)randomPlaceId];
+            var startLocation = new LocationModel(famousPlaceLocationModel.Latitude, famousPlaceLocationModel.Longitude);
+            _agents.Add(new Agent($"Agent-{ii}", famousPlaceName, startLocation, 0.01f));
+            Debug.Log($"Agent-{ii} created at {famousPlaceName}");
         }
     }
 
     private IEnumerator SendLocation()
     {
-        while (ws != null)
+        while (_ws != null)
         {
             yield return new WaitForSeconds(updateInterval);
-            SendLocationData();
+            foreach (Agent agent in _agents)
+                SendLocationData(agent);
         }
     }
 
-    private void SendLocationData()
+    private void SendLocationData(Agent agent)
     {
-        if (ws is { ReadyState: WebSocketState.Open })
+        if (_ws is { ReadyState: WebSocketState.Open })
         {
-            Vector2 gpsLocation = GetGPSLocation();
-            LocationModel locationModel = new LocationModel(userId, gpsLocation.x, gpsLocation.y);
-            string jsonData = JsonUtility.ToJson(locationModel);
+            agent.SearchOneStep();
+            string jsonData = agent.GetLocationModelJson();
             Debug.Log($">>> Sending location data: {jsonData}");
-            ws.Send(jsonData);
+            _ws.Send(jsonData);
         }
     }
 
     private IEnumerator Reconnect()
     {
-        if (isReconnecting) yield break;
-        isReconnecting = true;
+        if (_isReconnecting) yield break;
+        _isReconnecting = true;
 
         Debug.Log("Attempting to reconnect...");
         yield return new WaitForSeconds(reconnectDelay);
         ConnectToServer();
     }
 
-    private Vector2 GetGPSLocation()
-    {
-        return new Vector2(Random.Range(-90f, 90f), Random.Range(-180f, 180f)); // Replace with real GPS data
-    }
-
     private void OnApplicationQuit()
     {
-        isQuitting = true;
+        _isQuitting = true;
         CloseWebSocket();
     }
 
@@ -102,10 +117,10 @@ public class LocationSender : MonoBehaviour
 
     private void CloseWebSocket()
     {
-        if (ws is { ReadyState: WebSocketState.Open })
+        if (_ws is { ReadyState: WebSocketState.Open })
         {
             Debug.Log("Closing WebSocket...");
-            ws.Close();
+            _ws.Close();
         }
     }
 }
