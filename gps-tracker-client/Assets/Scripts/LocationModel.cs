@@ -21,4 +21,9 @@ public struct LocationModel
     {
         return new Vector2((float)location.Latitude, (float)location.Longitude);
     }
+
+    public override string ToString()
+    {
+        return $"Latitude: {Latitude}, Longitude: {Longitude}";
+    }
 }

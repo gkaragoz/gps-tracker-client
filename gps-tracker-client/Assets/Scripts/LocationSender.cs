@@ -2,68 +2,43 @@
 using UnityEngine;
 using WebSocketSharp;
 using System.Collections;
-using System.Collections.Generic;
-using System.Text;
 using TMPro;
-using UnityEngine.UI;
-using Random = UnityEngine.Random;
 
 public class LocationSender : MonoBehaviour
 {
-    [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private string url;
     [SerializeField] private TMP_InputField inputField;
-    [SerializeField] private ScrollRect scrollRect;
     [SerializeField] private GameObject submitButtonObj;
+    [SerializeField] private GameObject loadingObj;
+    [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private TextMeshProUGUI currentLocationText;
     
-    public float updateInterval = 30f; // Configurable update interval
     public float reconnectDelay = 5f; // Wait before trying to reconnect
-    public int agentCount = 10; // Number of agents to simulate
     
     private WebSocket _ws;
     private bool _isQuitting;
     private bool _isReconnecting;
-    private string _url;
     
-    private readonly List<Agent> _agents = new List<Agent>();
-    private StringBuilder _stringBuilder;
+    private Coroutine _sendLocationCoroutine;
+    private Coroutine _reconnectCoroutine;
 
     private void Start()
     {
-        _url = "ws://localhost:3000";
-        inputField.text = _url;
-        _stringBuilder = new StringBuilder();
+        inputField.text = url;
+        statusText.text = $"Syncing location each {DeviceLocationService.Instance.UpdateInterval} seconds";
+        
+        DeviceLocationService.Instance.OnLocationUpdated += OnDeviceLocationUpdated;
     }
 
-    private void StartApp()
+    private void OnDeviceLocationUpdated(LocationModel newLocation)
     {
+        currentLocationText.text = $"Latitude: {newLocation.Latitude}<br>Longitude: {newLocation.Longitude}";
+    }
+
+    private void StartTracking()
+    {
+        Debug.LogWarning($"[LocationSender]::StartTracking() - url: {url}");
         ConnectToServer();
-        CreateAgents();
-    }
-
-    private void AddLog(string log)
-    {
-        _stringBuilder.AppendLine($"[{DateTime.Now.ToLongTimeString()}] {log}");
-        string result = GetLastNCharacters(_stringBuilder, 1000);
-        statusText.text += result;
-
-        IEnumerator Do()
-        {
-            yield return null;
-            scrollRect.normalizedPosition = Vector2.zero;
-        }
-
-        StartCoroutine(Do());
-    }
-    
-    private static string GetLastNCharacters(StringBuilder sb, int length)
-    {
-        if (sb.Length <= length)
-        {
-            return sb.ToString();
-        }
-
-        // Use ToString() with substring to efficiently extract the last N characters
-        return sb.ToString(sb.Length - length, length);
     }
 
     private void ConnectToServer()
@@ -74,70 +49,85 @@ public class LocationSender : MonoBehaviour
             _ws = null;
         }
 
-        _ws = new WebSocket(_url);
+        _ws = new WebSocket(url);
+        _ws.OnOpen += OnWsOpen();
+        _ws.OnMessage += OnWsMessageReceived();
+        _ws.OnError += OnWsGotError();
+        _ws.OnClose += OnWsClosed();
 
-        _ws.OnOpen += (sender, e) =>
-        {
-            AddLog("Connected to server");
-            _isReconnecting = false; // Reset reconnect flag
-        };
-
-        _ws.OnMessage += (sender, e) => AddLog("<<< Message from server: " + e.Data);
-        _ws.OnError += (sender, e) => AddLog("WebSocket Error: " + e.Message);
-
-        _ws.OnClose += (sender, e) =>
-        {
-            AddLog($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
-            if (!_isQuitting)
-            {
-                StartCoroutine(Reconnect());
-            }
-        };
-
-        AddLog($"Attempting to connect... to {_ws.Url}");
+        Debug.Log($"[LocationSender]::ConnectToServer Attempting to connect... to {_ws.Url}");
         _ws.Connect();
 
         if (!_isReconnecting) 
         {
-            StartCoroutine(SendLocation());
+            if (_sendLocationCoroutine != null)
+            {
+                StopCoroutine(_sendLocationCoroutine);
+            }
+            
+            _sendLocationCoroutine = StartCoroutine(SendLocation());
         }
     }
-    
-    private void CreateAgents()
+
+    private EventHandler OnWsOpen()
     {
-        for (int ii = 0; ii < agentCount; ii++)
+        return (_, _) =>
         {
-            var randomPlaceId = Random.Range(0, Enum.GetValues(typeof(FamousLocation)).Length);
-            var famousPlaceName = Enum.GetName(typeof(FamousLocation), randomPlaceId);
-            var famousPlaceLocationModel = GeoHelper.FamousPlaces[(FamousLocation)randomPlaceId];
-            var startLocation = new LocationModel(famousPlaceLocationModel.Latitude, famousPlaceLocationModel.Longitude);
-            
-            string deviceId = SystemInfo.deviceUniqueIdentifier;
-            _agents.Add(new Agent(deviceId, famousPlaceName, startLocation, 0.01f));
-            AddLog($"Agent-{ii} created at {famousPlaceName}");
-        }
+            Debug.LogWarning("Connected to server");
+            _isReconnecting = false; // Reset reconnect flag
+            Debug.Log($"Agent created at {DeviceLocationService.Instance.CurrentLocation}");
+        };
+    }
+
+    private EventHandler<MessageEventArgs> OnWsMessageReceived()
+    {
+        return (_, e) => Debug.Log("<<< Message from server: " + e.Data);
+    }
+
+    private EventHandler<ErrorEventArgs> OnWsGotError()
+    {
+        return (_, e)=> Debug.LogError("WebSocket Error: " + e.Message);
+    }
+    
+    private EventHandler<CloseEventArgs> OnWsClosed()
+    {
+        return (_, e) =>
+        {
+            Debug.LogWarning($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
+            if (!_isQuitting)
+            {
+                if (_reconnectCoroutine != null)
+                {
+                    StopCoroutine(_reconnectCoroutine);
+                }
+                _reconnectCoroutine = StartCoroutine(Reconnect());
+            }
+        };
     }
 
     private IEnumerator SendLocation()
     {
         while (_ws != null)
         {
-            yield return new WaitForSeconds(updateInterval);
-            foreach (Agent agent in _agents)
-                SendLocationData(agent);
-        }
-    }
-
-    private void SendLocationData(Agent agent)
-    {
-        if (_ws is { ReadyState: WebSocketState.Open })
-        {
-            if (DeviceLocationService.Instance != null && DeviceLocationService.Instance.IsLocationEnabled)
-                agent.UpdateLocation(DeviceLocationService.Instance.CurrentLocation);
-            
-            string jsonData = agent.GetLocationModelJson();
-            AddLog($">>> Sending location data: {jsonData}");
-            _ws.Send(jsonData);
+            yield return new WaitForSeconds(DeviceLocationService.Instance.UpdateInterval);
+            if (_ws is { ReadyState: WebSocketState.Open })
+            {
+                if (DeviceLocationService.Instance != null && DeviceLocationService.Instance.IsLocationEnabled)
+                {
+                    #if UNITY_EDITOR
+                    DeviceLocationService.Instance.SearchOneStep();
+                    #endif
+                    
+                    string jsonData = DeviceLocationService.Instance.GetCurrentLocationModelJson();
+                    if (string.IsNullOrEmpty(jsonData))
+                    {
+                        Debug.LogWarning("Location data is empty. Skipping...");
+                        continue;
+                    }
+                    Debug.Log($">>> Sending location data: {jsonData}");
+                    _ws.Send(jsonData);
+                }
+            }
         }
     }
 
@@ -146,7 +136,7 @@ public class LocationSender : MonoBehaviour
         if (_isReconnecting) yield break;
         _isReconnecting = true;
 
-        AddLog($"Attempting to reconnect...");
+        Debug.LogWarning("Disconnected from server. Reconnecting...");
         yield return new WaitForSeconds(reconnectDelay);
         ConnectToServer();
     }
@@ -164,18 +154,28 @@ public class LocationSender : MonoBehaviour
 
     private void CloseWebSocket()
     {
-        if (_ws is { ReadyState: WebSocketState.Open })
+        if (_ws != null)
         {
-            AddLog("Closing WebSocket...");
-            _ws.Close();
+            if (_ws.ReadyState == WebSocketState.Open)
+            {
+                Debug.LogWarning("Closing WebSocket...");
+                _ws.Close();
+            }
+            _ws.OnOpen -= OnWsOpen();
+            _ws.OnMessage -= OnWsMessageReceived();
+            _ws.OnError -= OnWsGotError();
+            _ws.OnClose -= OnWsClosed();
+            _ws = null;
         }
     }
 
     public void OnSubmitPressed()
     {
-        _url = inputField.text;
+        url = inputField.text;
+        Debug.Log($"[LocationSender]::OnSubmitPressed() - url: {inputField.text}");
         inputField.gameObject.SetActive(false);
         submitButtonObj.gameObject.SetActive(false);
-        StartApp();
+        loadingObj.gameObject.SetActive(true);
+        StartTracking();
     }
 }
