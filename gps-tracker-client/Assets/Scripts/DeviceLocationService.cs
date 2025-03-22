@@ -3,10 +3,17 @@ using System.Collections;
 using System.Threading.Tasks;
 using UnityEngine;
 
+#if UNITY_IOS
+using UnityEngine.iOS;
+#endif
+#if UNITY_ANDROID
+using UnityEngine.Android;
+#endif
+
 public class DeviceLocationService : MonoBehaviour
 {
     [SerializeField] private float updateInterval = 5;
-    
+
     public static DeviceLocationService Instance { get; private set; }
 
     public event Action<LocationModel> OnLocationUpdated;
@@ -14,6 +21,7 @@ public class DeviceLocationService : MonoBehaviour
     public bool IsLocationEnabled { get; private set; }
 
     private LocationModel _currentLocation;
+
     public LocationModel CurrentLocation
     {
         get => _currentLocation;
@@ -30,9 +38,11 @@ public class DeviceLocationService : MonoBehaviour
             {
                 _agent.UpdateLocation(value);
             }
+
             OnLocationUpdated?.Invoke(value);
         }
     }
+
     private Agent _agent;
 
     private void Awake()
@@ -62,12 +72,26 @@ public class DeviceLocationService : MonoBehaviour
         await Task.CompletedTask;
         return;
 #else
+#if UNITY_IOS
+    // Check if location permission is already granted
     if (!Input.location.isEnabledByUser)
     {
-        Debug.LogWarning("Location services are disabled by the user.");
-        IsLocationEnabled = false;
+        Debug.LogWarning("iOS: Location services are disabled.");
+        ShowLocationDisabledPopup();
         return;
     }
+#endif
+
+#if UNITY_ANDROID
+    if (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+    {
+        Permission.RequestUserPermission(Permission.FineLocation);
+        while (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+        {
+            await Task.Delay(500); // Wait until the user responds
+        }
+    }
+#endif
 
     Input.location.Start(1f, 0.5f); // Request high accuracy location
 
@@ -82,6 +106,7 @@ public class DeviceLocationService : MonoBehaviour
     {
         Debug.LogWarning("Failed to initialize GPS.");
         IsLocationEnabled = false;
+        ShowLocationDisabledPopup();
         return;
     }
 
@@ -109,6 +134,23 @@ public class DeviceLocationService : MonoBehaviour
 #endif
     }
 
+    private void ShowLocationDisabledPopup()
+    {
+        Debug.LogWarning("Showing location permission popup...");
+
+#if UNITY_ANDROID
+        // Open Android app location settings
+        AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+        AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+        AndroidJavaObject intent =
+            new AndroidJavaObject("android.content.Intent", "android.settings.LOCATION_SOURCE_SETTINGS");
+        currentActivity.Call("startActivity", intent);
+#elif UNITY_IOS
+        // Open iOS location settings
+        Application.OpenURL("App-Prefs:root=LOCATION_SERVICES");
+#endif
+    }
+
     private void OnApplicationQuit()
     {
         Input.location.Stop();
@@ -123,7 +165,7 @@ public class DeviceLocationService : MonoBehaviour
     {
         CurrentLocation += GetRandomStep();
     }
-    
+
     private Vector2 GetRandomStep()
     {
         return new Vector2(UnityEngine.Random.Range(-0.0001f, 0.0001f), UnityEngine.Random.Range(-0.0001f, 0.0001f));
