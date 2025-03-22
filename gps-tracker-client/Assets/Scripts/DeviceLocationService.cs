@@ -59,6 +59,7 @@ public class DeviceLocationService : MonoBehaviour
         Debug.Log("Running in Editor - Mocking GPS Data.");
         IsLocationEnabled = true;
         CurrentLocation = new LocationModel(27.9881f, 86.9250f); // Mock location (Mount Everest)
+        await Task.CompletedTask;
         return;
 #else
     if (!Input.location.isEnabledByUser)
