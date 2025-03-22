@@ -11,6 +11,7 @@ public class LocationSender : MonoBehaviour
     [SerializeField] private GameObject submitButtonObj;
     [SerializeField] private GameObject loadingObj;
     [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private TextMeshProUGUI sentCounterText;
     [SerializeField] private TextMeshProUGUI currentLocationText;
     
     public float reconnectDelay = 5f; // Wait before trying to reconnect
@@ -18,6 +19,7 @@ public class LocationSender : MonoBehaviour
     private WebSocket _ws;
     private bool _isQuitting;
     private bool _isReconnecting;
+    private int _sentCounter;
     
     private Coroutine _sendLocationCoroutine;
     private Coroutine _reconnectCoroutine;
@@ -122,6 +124,7 @@ public class LocationSender : MonoBehaviour
                 }
                 Debug.Log($">>> Sending location data: {jsonData}");
                 _ws.Send(jsonData);
+                sentCounterText.text = $"Sent: {++_sentCounter}";
             }
         }
     }
