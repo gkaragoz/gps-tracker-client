@@ -13,6 +13,7 @@ public class LocationSender : MonoBehaviour
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private TextMeshProUGUI sentCounterText;
     [SerializeField] private TextMeshProUGUI currentLocationText;
+    [SerializeField] private TextMeshProUGUI sentDataText;
     
     public float reconnectDelay = 5f; // Wait before trying to reconnect
     
@@ -128,6 +129,7 @@ public class LocationSender : MonoBehaviour
                 Debug.Log($">>> Sending location data: {jsonData}");
                 _ws.Send(jsonData);
                 sentCounterText.text = $"Sent: {++_sentCounter}";
+                sentDataText.text = jsonData;
             }
         }
     }

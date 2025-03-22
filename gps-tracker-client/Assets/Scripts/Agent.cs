@@ -14,7 +14,7 @@ public class Agent
     public string GetLocationModelJson()
     {
         var locationModel = new LocationPackage(UserId, LastKnownLocation.Latitude, LastKnownLocation.Longitude);
-        return JsonUtility.ToJson(locationModel);
+        return JsonUtility.ToJson(locationModel, true);
     }
     
     public void UpdateLocation(LocationModel newLocation)
