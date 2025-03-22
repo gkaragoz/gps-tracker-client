@@ -50,10 +50,10 @@ public class LocationSender : MonoBehaviour
         }
 
         _ws = new WebSocket(url);
-        _ws.OnOpen += OnWsOpen();
-        _ws.OnMessage += OnWsMessageReceived();
-        _ws.OnError += OnWsGotError();
-        _ws.OnClose += OnWsClosed();
+        _ws.OnOpen += OnWsOpen;
+        _ws.OnMessage += OnWsMessageReceived;
+        _ws.OnError += OnWsGotError;
+        _ws.OnClose += OnWsClosed;
 
         Debug.Log($"[LocationSender]::ConnectToServer Attempting to connect... to {_ws.Url}");
         _ws.Connect();
@@ -68,41 +68,36 @@ public class LocationSender : MonoBehaviour
             _sendLocationCoroutine = StartCoroutine(SendLocation());
         }
     }
-
-    private EventHandler OnWsOpen()
-    {
-        return (_, _) =>
-        {
-            Debug.LogWarning("Connected to server");
-            _isReconnecting = false; // Reset reconnect flag
-            Debug.Log($"Agent created at {DeviceLocationService.Instance.CurrentLocation}");
-        };
-    }
-
-    private EventHandler<MessageEventArgs> OnWsMessageReceived()
-    {
-        return (_, e) => Debug.Log("<<< Message from server: " + e.Data);
-    }
-
-    private EventHandler<ErrorEventArgs> OnWsGotError()
-    {
-        return (_, e)=> Debug.LogError("WebSocket Error: " + e.Message);
-    }
     
-    private EventHandler<CloseEventArgs> OnWsClosed()
+
+    private void OnWsOpen(object sender, EventArgs e)
     {
-        return (_, e) =>
+        Debug.LogWarning("Connected to server");
+        _isReconnecting = false; // Reset reconnect flag
+        Debug.Log($"Agent created at {DeviceLocationService.Instance.CurrentLocation}");   
+    }
+
+    private void OnWsMessageReceived(object sender, MessageEventArgs e)
+    {
+        Debug.Log("<<< Message from server: " + e.Data);
+    }
+
+    private void OnWsGotError(object sender, ErrorEventArgs e)
+    {
+        Debug.LogError("WebSocket Error: " + e.Message);
+    }
+
+    private void OnWsClosed(object sender, CloseEventArgs e)
+    {
+        Debug.LogWarning($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
+        if (!_isQuitting)
         {
-            Debug.LogWarning($"Disconnected from server. Code: {e.Code}, Reason: {e.Reason}");
-            if (!_isQuitting)
+            if (_reconnectCoroutine != null)
             {
-                if (_reconnectCoroutine != null)
-                {
-                    StopCoroutine(_reconnectCoroutine);
-                }
-                _reconnectCoroutine = StartCoroutine(Reconnect());
+                StopCoroutine(_reconnectCoroutine);
             }
-        };
+            _reconnectCoroutine = StartCoroutine(Reconnect());
+        }   
     }
 
     private IEnumerator SendLocation()
@@ -110,23 +105,23 @@ public class LocationSender : MonoBehaviour
         while (_ws != null)
         {
             yield return new WaitForSeconds(DeviceLocationService.Instance.UpdateInterval);
-            if (_ws is { ReadyState: WebSocketState.Open })
+            if (_ws == null || _ws.ReadyState != WebSocketState.Open) 
+                yield break;
+
+            if (DeviceLocationService.Instance != null && DeviceLocationService.Instance.IsLocationEnabled)
             {
-                if (DeviceLocationService.Instance != null && DeviceLocationService.Instance.IsLocationEnabled)
+#if UNITY_EDITOR
+                DeviceLocationService.Instance.SearchOneStep();
+#endif
+                
+                string jsonData = DeviceLocationService.Instance.GetCurrentLocationModelJson();
+                if (string.IsNullOrEmpty(jsonData))
                 {
-                    #if UNITY_EDITOR
-                    DeviceLocationService.Instance.SearchOneStep();
-                    #endif
-                    
-                    string jsonData = DeviceLocationService.Instance.GetCurrentLocationModelJson();
-                    if (string.IsNullOrEmpty(jsonData))
-                    {
-                        Debug.LogWarning("Location data is empty. Skipping...");
-                        continue;
-                    }
-                    Debug.Log($">>> Sending location data: {jsonData}");
-                    _ws.Send(jsonData);
+                    Debug.LogWarning("Location data is empty. Skipping...");
+                    continue;
                 }
+                Debug.Log($">>> Sending location data: {jsonData}");
+                _ws.Send(jsonData);
             }
         }
     }
@@ -136,9 +131,14 @@ public class LocationSender : MonoBehaviour
         if (_isReconnecting) yield break;
         _isReconnecting = true;
 
-        Debug.LogWarning("Disconnected from server. Reconnecting...");
-        yield return new WaitForSeconds(reconnectDelay);
-        ConnectToServer();
+        float waitTime = reconnectDelay;
+        while (_ws == null || _ws.ReadyState != WebSocketState.Open)
+        {
+            Debug.LogWarning($"Reconnecting in {waitTime} seconds...");
+            yield return new WaitForSeconds(waitTime);
+            waitTime = Mathf.Min(waitTime * 2, 30); // Double the delay, max 30s
+            ConnectToServer();
+        }
     }
 
     private void OnApplicationQuit()
@@ -161,10 +161,10 @@ public class LocationSender : MonoBehaviour
                 Debug.LogWarning("Closing WebSocket...");
                 _ws.Close();
             }
-            _ws.OnOpen -= OnWsOpen();
-            _ws.OnMessage -= OnWsMessageReceived();
-            _ws.OnError -= OnWsGotError();
-            _ws.OnClose -= OnWsClosed();
+            _ws.OnOpen -= OnWsOpen;
+            _ws.OnMessage -= OnWsMessageReceived;
+            _ws.OnError -= OnWsGotError;
+            _ws.OnClose -= OnWsClosed;
             _ws = null;
         }
     }

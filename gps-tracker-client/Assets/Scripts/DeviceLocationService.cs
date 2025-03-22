@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public class DeviceLocationService : MonoBehaviour
@@ -47,32 +48,32 @@ public class DeviceLocationService : MonoBehaviour
         }
     }
 
-    private IEnumerator Start()
+    private void Start()
     {
-        yield return RequestLocationPermissionAndUpdate();
+        _ = RequestLocationPermissionAndUpdate();
     }
 
-    private IEnumerator RequestLocationPermissionAndUpdate()
+    private async Task RequestLocationPermissionAndUpdate()
     {
 #if UNITY_EDITOR
         Debug.Log("Running in Editor - Mocking GPS Data.");
         IsLocationEnabled = true;
-        CurrentLocation = new LocationModel(27.9881f, 86.9250f); // Mount Everest (mock data)
-        yield break;  // No need for real GPS updates in editor mode.
+        CurrentLocation = new LocationModel(27.9881f, 86.9250f); // Mock location (Mount Everest)
+        return;
 #else
     if (!Input.location.isEnabledByUser)
     {
         Debug.LogWarning("Location services are disabled by the user.");
         IsLocationEnabled = false;
-        yield break;
+        return;
     }
 
-    Input.location.Start(1f, 0.5f); // High accuracy: 1m precision, updates if moved 0.5m
+    Input.location.Start(1f, 0.5f); // Request high accuracy location
 
-    int maxWait = 10; // Wait for up to 10 seconds for GPS to initialize
+    int maxWait = 10; // Wait up to 10 seconds for GPS to initialize
     while (Input.location.status == LocationServiceStatus.Initializing && maxWait > 0)
     {
-        yield return new WaitForSeconds(1);
+        await Task.Delay(1000);
         maxWait--;
     }
 
@@ -80,12 +81,11 @@ public class DeviceLocationService : MonoBehaviour
     {
         Debug.LogWarning("Failed to initialize GPS.");
         IsLocationEnabled = false;
-        yield break;
+        return;
     }
 
-    // GPS is now running
     IsLocationEnabled = true;
-    
+
     while (IsLocationEnabled)
     {
         if (Input.location.status == LocationServiceStatus.Running)
@@ -98,10 +98,10 @@ public class DeviceLocationService : MonoBehaviour
         {
             Debug.LogWarning("GPS stopped running.");
             IsLocationEnabled = false;
-            yield break;
+            break;
         }
 
-        yield return new WaitForSeconds(0.1f); // Get updates **every 0.1 seconds** (fastest possible)
+        await Task.Delay(1000); // Update location every second instead of 0.1s
     }
 
     Input.location.Stop(); // Stop GPS when not needed
