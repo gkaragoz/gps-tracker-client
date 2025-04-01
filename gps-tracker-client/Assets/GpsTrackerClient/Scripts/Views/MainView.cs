@@ -8,6 +8,8 @@ namespace GpsTrackerClient.Scripts.Views
 {
     public class MainView : MonoBehaviour
     {
+        [SerializeField] private PopupView popupView;
+        
         [Header("Blocker and Loading Circle")]
         [SerializeField] private GameObject blockerObj;
         [SerializeField] private LoadingCircle loadingCircle;
@@ -127,21 +129,25 @@ namespace GpsTrackerClient.Scripts.Views
         public void OnAllSessionButtonPressed()
         {
             Debug.Log("All Session button pressed");
+            popupView.Open("All Sessions", "This feature is not implemented yet.", () => { });
         }
 
         public void OnOnlineCountButtonPressed()
         {
             Debug.Log("Online Count button pressed");
+            popupView.Open("Online Count", "This feature is not implemented yet.", () => { });
         }
         
         public void OnDeviceIdButtonPressed()
         {
             Debug.Log("Device ID button pressed");
+            popupView.Open("Device Id", "This feature is not implemented yet.", () => { });
         }
         
         public void OnListLogsButtonPressed()
         {
             Debug.Log("List Logs button pressed");
+            popupView.Open("List Logs", "This feature is not implemented yet.", () => { });
         }
         
         public void OnStartTrackingButtonPressed()
