@@ -23,10 +23,10 @@ namespace GpsTrackerClient.Scripts.Views
             titleText.text = title;
             descText.text = description;
             
+            gameObject.SetActive(true);
+
             // force layout update
             LayoutRebuilder.ForceRebuildLayoutImmediate(parentRectTransform);
-            
-            gameObject.SetActive(true);
             
             closeButton.onClick.RemoveAllListeners();
             closeButton.onClick.AddListener(() =>
