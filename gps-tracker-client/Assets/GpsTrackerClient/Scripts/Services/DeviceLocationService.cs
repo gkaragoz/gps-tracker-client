@@ -1,6 +1,9 @@
 ﻿#if UNITY_IOS
 using UnityEngine.iOS;
 #endif
+#if UNITY_ANDROID
+using UnityEngine.Android;
+#endif
 using System;
 using System.Collections;
 using System.Threading.Tasks;
