@@ -28,10 +28,10 @@ public class LocationSender : MonoBehaviour
     private void Start()
     {
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
-        
+
         inputField.text = url;
         statusText.text = $"Syncing location each {DeviceLocationService.Instance.UpdateInterval} seconds";
-        
+
         DeviceLocationService.Instance.OnLocationUpdated += OnDeviceLocationUpdated;
     }
 
@@ -40,14 +40,9 @@ public class LocationSender : MonoBehaviour
         currentLocationText.text = $"Latitude: {newLocation.Latitude}<br>Longitude: {newLocation.Longitude}";
     }
 
-    private void StartTracking()
-    {
-        Debug.LogWarning($"[LocationSender]::StartTracking() - url: {url}");
-        ConnectToServer();
-    }
-
     private void ConnectToServer()
     {
+        Debug.LogWarning($"[LocationSender]::ConnectToServer() - url: {url}");
         if (_ws != null)
         {
             _ws.Close(); // Ensure old connection is closed before creating a new one
@@ -73,7 +68,6 @@ public class LocationSender : MonoBehaviour
             _sendLocationCoroutine = StartCoroutine(SendLocation());
         }
     }
-    
 
     private void OnWsOpen(object sender, EventArgs e)
     {
@@ -101,7 +95,7 @@ public class LocationSender : MonoBehaviour
             {
                 StopCoroutine(_reconnectCoroutine);
             }
-            SetOfflineScreen();
+            ConnectToServer();
             _reconnectCoroutine = StartCoroutine(Reconnect());
         }   
     }
@@ -176,41 +170,30 @@ public class LocationSender : MonoBehaviour
             _ws = null;
         }
     }
-    
-    private void SetOnlineScreen()
-    {
-        url = inputField.text;
-        inputField.gameObject.SetActive(false);
-        submitButtonObj.gameObject.SetActive(false);
-        loadingObj.gameObject.SetActive(true);
-    }
-
-    private void SetOfflineScreen()
-    {
-        inputField.gameObject.SetActive(true);
-        submitButtonObj.gameObject.SetActive(true);
-        loadingObj.gameObject.SetActive(false);
-    }
 
     private void OnApplicationPause(bool pauseStatus)
     {
-        if (_ws is {IsAlive: true})
+        if (pauseStatus)
         {
-            Debug.Log($"[LocationSender]::OnApplicationPause() - {pauseStatus} WebSocket is alive");
-            return;
+            // Application is paused, stop location updates if necessary
+            Debug.Log("[LocationSender]::OnApplicationPause() - Paused");
         }
-
-        if (!pauseStatus)
+        else
         {
-            Debug.Log($"[LocationSender]::OnApplicationPause() - set offline screen");
-            SetOfflineScreen();
+            // Application is resumed, restart location updates
+            Debug.Log("[LocationSender]::OnApplicationPause() - Resumed");
+            if (_ws is not {IsAlive: true} && !submitButtonObj.activeSelf)
+                ConnectToServer();
         }
     }
 
     public void OnSubmitPressed()
     {
-        SetOnlineScreen();
+        url = inputField.text;
+        inputField.gameObject.SetActive(false);
+        submitButtonObj.gameObject.SetActive(false);
+        loadingObj.gameObject.SetActive(true);
         Debug.Log($"[LocationSender]::OnSubmitPressed() - url: {inputField.text}");
-        StartTracking();
+        ConnectToServer();
     }
 }
